@@ -13,8 +13,8 @@ use std::{
 #[repr(C)]
 pub struct Node4<K: Key, V> {
     pub header: NodeHeader<K>,
-    pub keys: [u8; 4],
     pub ptr: [MaybeUninit<NodePtr<K, V>>; 4],
+    pub keys: [u8; 4],
 }
 
 impl<K: Key, V> Node4<K, V> {
