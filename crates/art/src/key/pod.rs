@@ -13,7 +13,7 @@ impl<T: Pod + Key> KeyStorage<T> for PodStorageU8<T> {
     #[inline]
     fn store(key: &T, range: Range<usize>, data: NodeData) -> Self {
         assert!(std::mem::size_of::<T>() < u8::MAX as usize);
-        assert!(range.end < std::mem::size_of::<T>());
+        assert!(range.end <= std::mem::size_of::<T>());
 
         let mut value: MaybeUninit<T> = MaybeUninit::uninit();
         let mut ptr = value.as_mut_ptr().cast::<u8>();
@@ -37,6 +37,7 @@ impl<T: Pod + Key> KeyStorage<T> for PodStorageU8<T> {
     }
 
     fn key(&self) -> &[u8] {
+        dbg!(self.len);
         unsafe { std::slice::from_raw_parts(self.value.as_ptr().cast(), self.len as usize) }
     }
 

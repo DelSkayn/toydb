@@ -11,15 +11,15 @@ use std::{
 };
 
 #[repr(C)]
-pub struct Node4<K: Key, V> {
+pub struct Node4<K: Key + ?Sized, V> {
     pub header: NodeHeader<K>,
     pub ptr: [MaybeUninit<NodePtr<K, V>>; 4],
     pub keys: [u8; 4],
 }
 
-impl<K: Key, V> Node4<K, V> {
-    pub fn new(key: &K, range: Range<usize>) -> BoxedNode<Self> {
-        BoxedNode::new(Node4 {
+impl<K: Key + ?Sized, V> Node4<K, V> {
+    pub fn new(key: &K, range: Range<usize>) -> Self {
+        Node4 {
             header: NodeHeader::new(key, range, NodeKind::Node4),
             keys: [0; 4],
             ptr: unsafe {
@@ -28,7 +28,7 @@ impl<K: Key, V> Node4<K, V> {
                     [MaybeUninit<NodePtr<K, V>>; 4],
                 >(MaybeUninit::uninit())
             },
-        })
+        }
     }
 
     pub fn is_full(&self) -> bool {
@@ -72,6 +72,36 @@ impl<K: Key, V> Node4<K, V> {
         None
     }
 
+    pub unsafe fn insert_grow(
+        this: &mut NodePtr<K, V>,
+        key: u8,
+        v: NodePtr<K, V>,
+    ) -> Option<NodePtr<K, V>> {
+        debug_assert_eq!(this.header().data().kind, NodeKind::Node4);
+        let mut ptr = this.0.cast::<Self>();
+        if let Some(x) = ptr.as_ref().keys[..ptr.as_ref().header.data().len as usize]
+            .iter()
+            .copied()
+            .position(|x| x == key)
+        {
+            let res = std::mem::replace(&mut ptr.as_mut().ptr[x], MaybeUninit::new(v));
+            return Some(res.assume_init());
+        }
+
+        if ptr.as_ref().is_full() {
+            let mut ptr = Self::grow(ptr);
+            this.0 = ptr.cast();
+            ptr.as_mut().insert(key, v);
+            return None;
+        }
+
+        let idx = ptr.as_ref().header.data().len;
+        ptr.as_mut().header.data_mut().len += 1;
+        ptr.as_mut().ptr[idx as usize].write(v);
+        ptr.as_mut().keys[idx as usize] = key;
+        None
+    }
+
     pub fn remove(&mut self, key: u8) -> Option<NodePtr<K, V>> {
         let len = self.header.data().len;
         for i in 0..len {
@@ -85,30 +115,28 @@ impl<K: Key, V> Node4<K, V> {
         None
     }
 
-    pub fn grow(this: BoxedNode<Self>) -> BoxedNode<Node16<K, V>> {
-        assert!(this.is_full());
-        let ptr = this.0.as_ptr();
+    unsafe fn grow(this: NonNull<Self>) -> NonNull<Node16<K, V>> {
+        debug_assert!(this.as_ref().is_full());
+        let ptr = this.as_ptr();
         let layout = Layout::new::<Self>();
         unsafe {
+            let new_size = std::mem::size_of::<Node16<K, V>>();
             // because of the layout of nodes we only need to copy the keys into the right place
             // and alter the kind.
-            let src_ptr =
-                std::alloc::realloc(ptr.cast(), layout, std::mem::size_of::<Node16<K, V>>())
-                    .cast::<Self>();
-            let dst_ptr = NonNull::new(src_ptr.cast::<Node16<K, V>>()).unwrap();
+            let src_ptr = std::alloc::realloc(ptr.cast(), layout, new_size).cast::<Self>();
+            let mut dst_ptr = NonNull::new(src_ptr.cast::<Node16<K, V>>()).unwrap();
             std::ptr::copy(
                 addr_of_mut!((*src_ptr).keys).cast::<u8>(),
                 addr_of_mut!((*dst_ptr.as_ptr()).keys).cast::<u8>(),
                 4,
             );
-            let mut res = BoxedNode(dst_ptr);
-            res.header.data_mut().kind = NodeKind::Node16;
-            res
+            dst_ptr.as_mut().header.data_mut().kind = NodeKind::Node16;
+            dst_ptr
         }
     }
 }
 
-impl<K: Key, V> Drop for Node4<K, V> {
+impl<K: Key + ?Sized, V> Drop for Node4<K, V> {
     fn drop(&mut self) {
         for i in 0..self.header.data().len {
             unsafe { self.ptr[i as usize].assume_init_drop() }

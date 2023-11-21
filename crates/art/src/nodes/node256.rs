@@ -6,12 +6,12 @@ use crate::{
 use std::{mem::MaybeUninit, ops::Range};
 
 #[repr(C)]
-pub struct Node256<K: Key, V> {
+pub struct Node256<K: Key + ?Sized, V> {
     pub header: NodeHeader<K>,
     pub ptr: [Option<NodePtr<K, V>>; 256],
 }
 
-impl<K: Key, V> Node256<K, V> {
+impl<K: Key + ?Sized, V> Node256<K, V> {
     pub fn new(key: &K, range: Range<usize>) -> BoxedNode<Self> {
         BoxedNode::new(Node256 {
             header: NodeHeader::new(key, range, NodeKind::Node48),
@@ -29,6 +29,10 @@ impl<K: Key, V> Node256<K, V> {
         // slight quirk with len being only u8
         // Can't fit full length so actuall length is self.header.data().len + 1
         self.header.data().len < 47
+    }
+
+    pub fn get(&self, key: u8) -> Option<&NodePtr<K, V>> {
+        self.ptr[key as usize].as_ref()
     }
 
     pub fn get_mut(&mut self, key: u8) -> Option<&mut NodePtr<K, V>> {

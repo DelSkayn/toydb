@@ -7,22 +7,22 @@ use crate::{
 use std::{
     mem::{ManuallyDrop, MaybeUninit},
     ops::Range,
-    ptr::addr_of_mut,
+    ptr::{addr_of_mut, NonNull},
 };
 
-pub union PtrUnion<K: Key, V> {
+pub union PtrUnion<K: Key + ?Sized, V> {
     pub free: u8,
     pub ptr: ManuallyDrop<NodePtr<K, V>>,
 }
 
 #[repr(C)]
-pub struct Node48<K: Key, V> {
+pub struct Node48<K: Key + ?Sized, V> {
     pub header: NodeHeader<K>,
     pub ptr: [PtrUnion<K, V>; 48],
     pub idx: [u8; 256],
 }
 
-impl<K: Key, V> Node48<K, V> {
+impl<K: Key + ?Sized, V> Node48<K, V> {
     pub fn new(key: &K, range: Range<usize>) -> BoxedNode<Self> {
         BoxedNode::new(Node48 {
             header: NodeHeader::new(key, range, NodeKind::Node48),
@@ -37,6 +37,15 @@ impl<K: Key, V> Node48<K, V> {
 
     pub fn should_shrink(&self) -> bool {
         self.header.data().len < 16
+    }
+
+    pub fn get(&self, key: u8) -> Option<&NodePtr<K, V>> {
+        let idx = self.idx[key as usize];
+        if idx != u8::MAX {
+            unsafe { Some(&self.ptr[idx as usize].ptr) }
+        } else {
+            None
+        }
     }
 
     pub fn get_mut(&mut self, key: u8) -> Option<&mut NodePtr<K, V>> {
@@ -67,6 +76,38 @@ impl<K: Key, V> Node48<K, V> {
         }
     }
 
+    pub unsafe fn insert_grow(
+        this: &mut NodePtr<K, V>,
+        key: u8,
+        v: NodePtr<K, V>,
+    ) -> Option<NodePtr<K, V>> {
+        debug_assert_eq!(this.header().data().kind, NodeKind::Node48);
+        let mut ptr = this.0.cast::<Self>();
+        let idx = ptr.as_ref().idx[key as usize];
+        if idx != u8::MAX {
+            let res = std::mem::replace(
+                &mut ptr.as_mut().ptr[idx as usize].ptr,
+                ManuallyDrop::new(v),
+            );
+            return Some(ManuallyDrop::into_inner(res));
+        }
+
+        if ptr.as_ref().is_full() {
+            let mut ptr = Self::grow(ptr);
+            this.0 = ptr.cast();
+            ptr.as_mut().insert(key, v);
+            return None;
+        }
+
+        let free = ptr.as_ref().header.data().free;
+        ptr.as_mut().header.data_mut().free = unsafe { ptr.as_ref().ptr[free as usize].free };
+        ptr.as_mut().header.data_mut().len += 1;
+        ptr.as_mut().idx[key as usize] = free;
+        ptr.as_mut().ptr[free as usize].ptr = ManuallyDrop::new(v);
+
+        None
+    }
+
     pub fn remove(&mut self, key: u8) -> Option<NodePtr<K, V>> {
         if self.idx[key as usize] == u8::MAX {
             return None;
@@ -78,6 +119,8 @@ impl<K: Key, V> Node48<K, V> {
     }
 
     pub fn shrink(mut this: BoxedNode<Self>) -> BoxedNode<Node16<K, V>> {
+        todo!()
+        /*
         assert!(this.should_shrink());
 
         unsafe {
@@ -108,47 +151,41 @@ impl<K: Key, V> Node48<K, V> {
             BoxedNode::dealloc(this_ptr);
             res
         }
+        */
     }
 
-    pub fn grow(mut this: BoxedNode<Self>) -> BoxedNode<Node256<K, V>> {
-        assert!(this.is_full());
-        unsafe {
-            let new_ptr = BoxedNode::<Node256<K, V>>::alloc();
+    unsafe fn grow(mut this: NonNull<Self>) -> NonNull<Node256<K, V>> {
+        let mut new_ptr = BoxedNode::<Node256<K, V>>::alloc();
 
-            let ptr_ptr = addr_of_mut!((*new_ptr.as_ptr()).ptr).cast::<Option<NodePtr<K, V>>>();
-            // init zero
-            std::ptr::write_bytes(ptr_ptr, 0, 256);
-            // copy over pointer
-            for i in 0..=255u8 {
-                let idx = this.idx[i as usize];
-                if idx != u8::MAX {
-                    ptr_ptr
-                        .add(i as usize)
-                        .write(Some(ManuallyDrop::take(&mut this.ptr[idx as usize].ptr)));
-                }
+        let ptr_ptr = addr_of_mut!((*new_ptr.as_ptr()).ptr).cast::<Option<NodePtr<K, V>>>();
+        // init zero
+        std::ptr::write_bytes(ptr_ptr, 0, 256);
+        // copy over pointer
+        for i in 0..=255u8 {
+            let idx = this.as_ref().idx[i as usize];
+            if idx != u8::MAX {
+                ptr_ptr.add(i as usize).write(Some(ManuallyDrop::take(
+                    &mut this.as_mut().ptr[idx as usize].ptr,
+                )));
             }
-
-            // move out
-            let ptr = this.0;
-
-            // copy over header
-            std::ptr::copy(
-                ptr.cast::<NodeHeader<K>>().as_ptr(),
-                new_ptr.cast::<NodeHeader<K>>().as_ptr(),
-                1,
-            );
-            // ownership tranfered
-            let mut res = BoxedNode(new_ptr);
-            BoxedNode::dealloc(ptr);
-            // make the len smaller so it will fit u8
-            res.header.data_mut().len = 47;
-            res.header.data_mut().kind = NodeKind::Node256;
-            res
         }
+
+        // copy over header
+        std::ptr::copy(
+            this.cast::<NodeHeader<K>>().as_ptr(),
+            new_ptr.cast::<NodeHeader<K>>().as_ptr(),
+            1,
+        );
+        // ownership tranfered
+        BoxedNode::dealloc(this);
+        // make the len smaller so it will fit u8
+        new_ptr.as_mut().header.data_mut().len = 47;
+        new_ptr.as_mut().header.data_mut().kind = NodeKind::Node256;
+        new_ptr
     }
 }
 
-impl<K: Key, V> Drop for Node48<K, V> {
+impl<K: Key + ?Sized, V> Drop for Node48<K, V> {
     fn drop(&mut self) {
         self.idx
             .into_iter()

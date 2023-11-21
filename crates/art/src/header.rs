@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use crate::key::{Key, KeyStorage};
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 #[repr(u8)]
 pub enum NodeKind {
     Leaf = 0,
@@ -19,9 +19,9 @@ pub struct NodeData {
     pub free: u8,
 }
 
-pub struct NodeHeader<K: Key>(K::Storage);
+pub struct NodeHeader<K: Key + ?Sized>(K::Storage);
 
-impl<K: Key> NodeHeader<K> {
+impl<K: Key + ?Sized> NodeHeader<K> {
     pub fn new(key: &K, range: Range<usize>, kind: NodeKind) -> Self {
         let storage = <K::Storage as KeyStorage<K>>::store(
             key,
@@ -45,5 +45,9 @@ impl<K: Key> NodeHeader<K> {
 
     pub fn storage(&self) -> &K::Storage {
         &self.0
+    }
+
+    pub fn storage_mut(&mut self) -> &mut K::Storage {
+        &mut self.0
     }
 }
