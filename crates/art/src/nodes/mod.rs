@@ -126,9 +126,6 @@ impl<K: Key + ?Sized, V> NodePtr<K, V> {
     }
 
     pub fn display(&self, depth: usize) {
-        for _ in 0..(depth * 4) {
-            print!(" ");
-        }
         match self.header().data().kind {
             NodeKind::Leaf => print!("leaf"),
             NodeKind::Node4 => print!("node4"),
@@ -142,6 +139,10 @@ impl<K: Key + ?Sized, V> NodePtr<K, V> {
             NodeKind::Node4 => unsafe {
                 let node = self.0.cast::<Node4<K, V>>();
                 for i in 0..node.as_ref().header.data().len {
+                    for _ in 0..(depth * 4) {
+                        print!(" ");
+                    }
+                    print!("{}:", node.as_ref().keys[i as usize]);
                     node.as_ref().ptr[i as usize]
                         .assume_init_ref()
                         .display(depth + 1);
@@ -150,6 +151,10 @@ impl<K: Key + ?Sized, V> NodePtr<K, V> {
             NodeKind::Node16 => unsafe {
                 let node = self.0.cast::<Node16<K, V>>();
                 for i in 0..node.as_ref().header.data().len {
+                    for _ in 0..(depth * 4) {
+                        print!(" ");
+                    }
+                    print!("{}:", node.as_ref().keys[i as usize]);
                     node.as_ref().ptr[i as usize]
                         .assume_init_ref()
                         .display(depth + 1);

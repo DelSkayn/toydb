@@ -37,12 +37,13 @@ impl<T: Pod + Key> KeyStorage<T> for PodStorageU8<T> {
     }
 
     fn key(&self) -> &[u8] {
-        dbg!(self.len);
         unsafe { std::slice::from_raw_parts(self.value.as_ptr().cast(), self.len as usize) }
     }
 
     fn drop_start(&mut self, offset: usize) {
-        let slice = unsafe { bytemuck::bytes_of_mut(self.value.assume_init_mut()) };
+        let slice = unsafe {
+            &mut bytemuck::bytes_of_mut(self.value.assume_init_mut())[..self.len as usize]
+        };
         let new_len = slice.len().checked_sub(offset).unwrap();
         slice.copy_within(offset.., 0);
         self.len = new_len as u8;

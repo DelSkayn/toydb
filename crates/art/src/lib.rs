@@ -11,6 +11,9 @@ mod header;
 mod key;
 mod nodes;
 
+#[cfg(test)]
+mod test;
+
 pub struct Art<K: Key + ?Sized, V> {
     root: Option<NodePtr<K, V>>,
 }
@@ -51,7 +54,7 @@ impl<K: Key + ?Sized, V> Art<K, V> {
             Self::insert_node(x, 0, key, value)
         } else {
             let range = 0..key.len();
-            let leaf_node = dbg!(BoxedNode::new(LeafNode::new(key, range, value)));
+            let leaf_node = BoxedNode::new(LeafNode::new(key, range, value));
             self.root = Some(leaf_node.into());
             None
         }
@@ -139,7 +142,7 @@ impl<K: Key + ?Sized, V> Art<K, V> {
 
     fn match_prefix(key: &K, from: usize, to: &[u8]) -> Option<usize> {
         for (idx, p) in to.iter().copied().enumerate() {
-            if idx + from > key.len() {
+            if idx + from >= key.len() {
                 panic!("key was a prefix of an existing key");
             }
             let k = key.at(from + idx);
@@ -171,6 +174,8 @@ impl<K: Key + ?Sized, V> Art<K, V> {
             .storage_mut()
             .drop_start(prefix_mismatch_offset + 1);
 
+        dbg!(node.header().storage().key());
+
         let old_node = std::mem::replace(node, split_node.into());
 
         unsafe {
@@ -185,7 +190,7 @@ impl<K: Key + ?Sized, V> Art<K, V> {
 
     pub fn display(&self) {
         if let Some(x) = self.root.as_ref() {
-            x.display(0)
+            x.display(1)
         }
     }
 }

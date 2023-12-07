@@ -7,7 +7,7 @@ use std::ops::Range;
 
 #[repr(C)]
 pub struct LeafNode<K: Key + ?Sized, V> {
-    header: NodeHeader<K>,
+    pub header: NodeHeader<K>,
     pub value: V,
 }
 
