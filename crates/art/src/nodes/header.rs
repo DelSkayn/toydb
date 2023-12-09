@@ -2,6 +2,8 @@ use std::ops::Range;
 
 use crate::key::{Key, KeyStorage};
 
+use super::NodeType;
+
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 #[repr(u8)]
 pub enum NodeKind {
@@ -22,17 +24,25 @@ pub struct NodeData {
 pub struct NodeHeader<K: Key + ?Sized>(K::Storage);
 
 impl<K: Key + ?Sized> NodeHeader<K> {
-    pub fn new(key: &K, range: Range<usize>, kind: NodeKind) -> Self {
+    pub fn new<N: NodeType<Key = K>>(key: &K, range: Range<usize>) -> Self {
         let storage = <K::Storage as KeyStorage<K>>::store(
             key,
             range,
             NodeData {
                 len: 0,
-                kind,
+                kind: N::KIND,
                 free: 0,
             },
         );
         NodeHeader(storage)
+    }
+
+    pub fn is<N: NodeType>(&self) -> bool {
+        self.0.data().kind == N::KIND
+    }
+
+    pub unsafe fn change_type<N: NodeType>(&mut self) {
+        self.0.data_mut().kind = N::KIND
     }
 
     pub fn data(&self) -> &NodeData {

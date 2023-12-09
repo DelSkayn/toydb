@@ -1,5 +1,5 @@
 use super::{Key, KeyStorage};
-use crate::header::NodeData;
+use crate::nodes::NodeData;
 use bytemuck::Pod;
 use std::{mem::MaybeUninit, ops::Range};
 
@@ -9,7 +9,7 @@ pub struct PodStorageU8<T: Pod> {
     data: NodeData,
 }
 
-impl<T: Pod + Key> KeyStorage<T> for PodStorageU8<T> {
+unsafe impl<T: Pod + Key> KeyStorage<T> for PodStorageU8<T> {
     #[inline]
     fn store(key: &T, range: Range<usize>, data: NodeData) -> Self {
         assert!(std::mem::size_of::<T>() < u8::MAX as usize);
@@ -36,17 +36,27 @@ impl<T: Pod + Key> KeyStorage<T> for PodStorageU8<T> {
         &mut self.data
     }
 
-    fn key(&self) -> &[u8] {
+    fn prefix(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self.value.as_ptr().cast(), self.len as usize) }
     }
 
-    fn drop_start(&mut self, offset: usize) {
+    fn drop_prefix(&mut self, offset: usize) {
         let slice = unsafe {
             &mut bytemuck::bytes_of_mut(self.value.assume_init_mut())[..self.len as usize]
         };
         let new_len = slice.len().checked_sub(offset).unwrap();
         slice.copy_within(offset.., 0);
         self.len = new_len as u8;
+    }
+
+    fn prepend_prefix(&mut self, prefix: &[u8], key: u8) {
+        let len = self.len as usize + prefix.len() + 1;
+        let old = self.value;
+        let slice = unsafe { &mut bytemuck::bytes_of_mut(self.value.assume_init_mut()) };
+        let old_slice = unsafe { &bytemuck::bytes_of(old.assume_init_ref()) };
+        slice[..prefix.len()].copy_from_slice(prefix);
+        slice[prefix.len()] = key;
+        slice[prefix.len() + 1..len].copy_from_slice(old_slice);
     }
 }
 

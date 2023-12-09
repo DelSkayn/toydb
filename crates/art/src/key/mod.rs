@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use crate::header::NodeData;
+use crate::nodes::NodeData;
 
 mod inline_buffer;
 mod pod;
@@ -9,19 +9,43 @@ pub use pod::PodStorageU8;
 
 use self::inline_buffer::InlineStorage;
 
-pub trait KeyStorage<K: Key + ?Sized>: Sized {
+/// A trait used for the storage of key prefixes.
+///
+/// # Safety
+/// This trait is marked unsafe to implement as implemenations which do not adhere to the following
+/// rules will result in undefined behaviour.
+///
+/// - The implementation of this trait must ensure that any call to [`KeyStorage::data`] or
+/// [`KeyStorage::data_mut`] returns an object with the same value as the one given by
+/// [`KeyStorage::store`]. Further more the value object must not changed unless changed externally
+/// by using [`KeyStorage::data_mut`].
+///
+/// In short the caller of this trait must be able to trust that the storage won't suddenly change
+/// the value of NodeData.
+pub unsafe trait KeyStorage<K: Key + ?Sized>: Sized {
     /// Create the storage for a key.
     fn store(key: &K, range: Range<usize>, data: NodeData) -> Self;
 
+    /// Return a reference to NodeData.
+    ///
+    /// The implementation of this trait must ensure that the reference to this node data is to the
+    /// same object as given by the call to store.
     fn data(&self) -> &NodeData;
 
+    /// Return a mutable reference to NodeData.
+    ///
+    /// The implementation of this trait must ensure that the reference to this node data is to the
+    /// same object as given by the call to store.
     fn data_mut(&mut self) -> &mut NodeData;
 
-    /// Retrieve the
-    fn key(&self) -> &[u8];
+    /// Retrieve the prefix stored in the storage.
+    fn prefix(&self) -> &[u8];
 
-    // Drop the start of the key, after calling this the storage should only contain [offset..]
-    fn drop_start(&mut self, offset: usize);
+    /// Drop the start of the key, after calling this the storage should only contain [offset..]
+    fn drop_prefix(&mut self, offset: usize);
+
+    /// Append the prefix followed by the key to the current prefix.
+    fn prepend_prefix(&mut self, prefix: &[u8], key: u8);
 }
 
 /// A art key

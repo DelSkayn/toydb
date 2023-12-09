@@ -1,6 +1,6 @@
 use std::{alloc::Layout, mem::MaybeUninit, ops::Range, ptr::NonNull};
 
-use crate::header::NodeData;
+use crate::nodes::NodeData;
 
 use super::{Key, KeyStorage};
 
@@ -112,7 +112,7 @@ impl Drop for InlineStorage {
     }
 }
 
-impl<K: Key + ?Sized> KeyStorage<K> for InlineStorage {
+unsafe impl<K: Key + ?Sized> KeyStorage<K> for InlineStorage {
     fn store(key: &K, range: Range<usize>, data: NodeData) -> Self {
         let mut this = unsafe { InlineStorage::new(range.len(), data) };
         let mut ptr = this.buffer_ptr().as_ptr();
@@ -133,21 +133,42 @@ impl<K: Key + ?Sized> KeyStorage<K> for InlineStorage {
         &mut self.data
     }
 
-    fn key(&self) -> &[u8] {
+    fn prefix(&self) -> &[u8] {
         self.key()
     }
 
-    fn drop_start(&mut self, offset: usize) {
+    fn drop_prefix(&mut self, offset: usize) {
         let key = self.key();
         let mut new = unsafe { InlineStorage::new(key.len() - offset, self.data) };
-        let mut ptr = new.buffer_ptr().as_ptr();
         unsafe {
-            for v in &key[offset..] {
-                ptr.write(*v);
-                ptr = ptr.add(1);
-            }
+            std::ptr::copy_nonoverlapping(
+                key[offset..].as_ptr(),
+                new.buffer_ptr().as_ptr(),
+                key.len() - offset,
+            );
         }
 
         *self = new;
+    }
+
+    fn prepend_prefix(&mut self, prefix: &[u8], key: u8) {
+        let len = if self.len < INLINE_MAX {
+            self.len as usize
+        } else {
+            unsafe { self.buffer.ptr.as_ref().len }
+        };
+        let new_len = len + prefix.len() + 1;
+        unsafe {
+            let mut new = InlineStorage::new(new_len, self.data);
+            // copy new prefix.
+            std::ptr::copy_nonoverlapping(prefix.as_ptr(), new.buffer_ptr().as_ptr(), prefix.len());
+            // copy the key.
+            let offset_ptr = new.buffer_ptr().as_ptr().add(prefix.len());
+            offset_ptr.write(key);
+            // copy old prefix.
+            let offset_ptr = offset_ptr.add(1);
+            std::ptr::copy_nonoverlapping(self.key().as_ptr(), offset_ptr, self.key().len());
+            *self = new;
+        };
     }
 }

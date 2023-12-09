@@ -1,5 +1,5 @@
 fn main() {
-    let mut tree = (art::Art::<str, usize>::new());
+    let mut tree = art::Art::<str, usize>::new();
     tree.display();
     tree.insert("hello world", 1);
     dbg!(&tree);

@@ -1,20 +1,25 @@
-use super::{BoxedNode, Node48, NodePtr};
-use crate::{
-    header::{NodeHeader, NodeKind},
-    key::Key,
+use super::{
+    owned_node::RawOwnedNode, BoxedNode, Node48, NodeHeader, NodeKind, NodeType, OwnedNode,
 };
-use std::{mem::MaybeUninit, ops::Range};
+use crate::{key::Key, nodes::node48::PtrUnion};
+use std::{mem::MaybeUninit, ops::Range, ptr::addr_of_mut};
 
 #[repr(C)]
 pub struct Node256<K: Key + ?Sized, V> {
     pub header: NodeHeader<K>,
-    pub ptr: [Option<NodePtr<K, V>>; 256],
+    pub ptr: [Option<BoxedNode<K, V>>; 256],
+}
+
+unsafe impl<K: Key + ?Sized, V> NodeType for Node256<K, V> {
+    const KIND: super::NodeKind = NodeKind::Node256;
+    type Key = K;
+    type Value = V;
 }
 
 impl<K: Key + ?Sized, V> Node256<K, V> {
-    pub fn new(key: &K, range: Range<usize>) -> BoxedNode<Self> {
-        BoxedNode::new(Node256 {
-            header: NodeHeader::new(key, range, NodeKind::Node48),
+    pub fn new(key: &K, range: Range<usize>) -> OwnedNode<Self> {
+        OwnedNode::new(Node256 {
+            header: NodeHeader::new::<Self>(key, range),
             ptr: unsafe { MaybeUninit::zeroed().assume_init() },
         })
     }
@@ -31,28 +36,49 @@ impl<K: Key + ?Sized, V> Node256<K, V> {
         self.header.data().len < 47
     }
 
-    pub fn get(&self, key: u8) -> Option<&NodePtr<K, V>> {
+    pub fn get(&self, key: u8) -> Option<&BoxedNode<K, V>> {
         self.ptr[key as usize].as_ref()
     }
 
-    pub fn get_mut(&mut self, key: u8) -> Option<&mut NodePtr<K, V>> {
+    pub fn get_mut(&mut self, key: u8) -> Option<&mut BoxedNode<K, V>> {
         self.ptr[key as usize].as_mut()
     }
 
-    pub fn insert(&mut self, key: u8, ptr: NodePtr<K, V>) -> Option<NodePtr<K, V>> {
+    pub fn insert(&mut self, key: u8, ptr: BoxedNode<K, V>) -> Option<BoxedNode<K, V>> {
         let res = self.ptr[key as usize].replace(ptr);
         self.header.data_mut().len += res.is_none() as u8;
         res
     }
 
-    pub fn remove(&mut self, key: u8) -> Option<NodePtr<K, V>> {
+    pub fn remove(&mut self, key: u8) -> Option<BoxedNode<K, V>> {
         let res = self.ptr[key as usize].take();
         self.header.data_mut().len -= res.is_some() as u8;
         res
     }
 
-    pub fn shrink(this: BoxedNode<Self>) -> BoxedNode<Node48<K, V>> {
-        assert!(this.should_shrink());
-        todo!()
+    unsafe fn shrink(mut this: RawOwnedNode<Self>) -> RawOwnedNode<Node48<K, V>> {
+        assert!(this.as_ref().should_shrink());
+        let mut new_node = RawOwnedNode::<Node48<K, V>>::alloc();
+
+        let key_ptr = addr_of_mut!((*new_node.as_ptr()).idx[0]);
+        let ptr_ptr = addr_of_mut!((*new_node.as_ptr()).ptr[0]);
+        let mut written = 0;
+
+        for (idx, p) in this.as_mut().ptr.iter_mut().enumerate() {
+            if let Some(x) = p.take() {
+                ptr_ptr.add(written).write(PtrUnion { ptr: x.into_raw() });
+                key_ptr.add(idx).write(written as u8);
+                written += 1;
+            }
+        }
+        debug_assert_eq!(written, 48);
+
+        new_node.copy_header_from(this);
+        new_node.header_mut().data_mut().len = 48;
+        new_node.header_mut().data_mut().free = u8::MAX;
+
+        RawOwnedNode::dealloc(this);
+
+        new_node
     }
 }
