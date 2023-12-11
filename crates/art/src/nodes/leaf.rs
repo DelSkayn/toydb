@@ -1,5 +1,6 @@
 use super::{owned_node::RawOwnedNode, NodeHeader, NodeKind, NodeType, OwnedNode};
 use crate::key::Key;
+use core::fmt;
 use std::{ops::Range, ptr::addr_of_mut};
 
 #[repr(C)]
@@ -31,5 +32,16 @@ impl<K: Key + ?Sized, V> LeafNode<K, V> {
             RawOwnedNode::dealloc(this);
             res
         }
+    }
+}
+
+impl<K: Key + ?Sized, V: fmt::Display> LeafNode<K, V> {
+    pub fn display(&self, fmt: &mut fmt::Formatter, _depth: usize) -> fmt::Result {
+        writeln!(
+            fmt,
+            "LEAF: prefix={:?} {}",
+            self.header.data().len,
+            self.value
+        )
     }
 }

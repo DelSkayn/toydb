@@ -1,3 +1,4 @@
+use core::fmt;
 use std::ops::Range;
 
 use crate::key::{Key, KeyStorage};
@@ -22,6 +23,15 @@ pub struct NodeData {
 }
 
 pub struct NodeHeader<K: Key + ?Sized>(K::Storage);
+
+impl<K: Key + ?Sized> fmt::Debug for NodeHeader<K>
+where
+    K::Storage: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("NodeHeader").field(&self.0).finish()
+    }
+}
 
 impl<K: Key + ?Sized> NodeHeader<K> {
     pub fn new<N: NodeType<Key = K>>(key: &K, range: Range<usize>) -> Self {

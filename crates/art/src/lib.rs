@@ -51,3 +51,15 @@ impl<K: Key + ?Sized, V> Art<K, V> {
         res
     }
 }
+
+impl<K: Key + ?Sized, V: std::fmt::Display> Art<K, V> {
+    pub fn print(&self) {
+        struct Printer<'a, K: Key + ?Sized, V: std::fmt::Display>(&'a Art<K, V>);
+        impl<K: Key + ?Sized, V: std::fmt::Display> std::fmt::Display for Printer<'_, K, V> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                self.0.tree.display(f)
+            }
+        }
+        println!("{}", Printer(self));
+    }
+}

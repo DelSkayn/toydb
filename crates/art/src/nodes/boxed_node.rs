@@ -3,6 +3,7 @@ use super::{
     NodeType, OwnedNode,
 };
 use crate::key::{Key, KeyStorage};
+use core::fmt;
 use std::{marker::PhantomData, ptr::NonNull};
 
 #[repr(transparent)]
@@ -130,16 +131,22 @@ impl<K: Key + ?Sized, V> RawBoxedNode<K, V> {
     }
 }
 
+impl<K: Key + ?Sized, V: fmt::Display> RawBoxedNode<K, V> {
+    pub unsafe fn display(self, fmt: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+        match self.header().data().kind {
+            NodeKind::Leaf => self.as_ref::<LeafNode<K, V>>().display(fmt, depth),
+            NodeKind::Node4 => self.as_ref::<Node4<K, V>>().display(fmt, depth),
+            NodeKind::Node16 => self.as_ref::<Node16<K, V>>().display(fmt, depth),
+            NodeKind::Node48 => self.as_ref::<Node48<K, V>>().display(fmt, depth),
+            NodeKind::Node256 => self.as_ref::<Node256<K, V>>().display(fmt, depth),
+        }
+    }
+}
+
 /// A pointer to a node of any kind.
 /// The pointer owns the node.
 #[repr(transparent)]
 pub struct BoxedNode<K: Key + ?Sized, V>(RawBoxedNode<K, V>);
-
-/*impl<K: Key + ?Sized, V> fmt::Debug for BoxedNode<K, V> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("NodePtr").field(&self.0).finish()
-    }
-}*/
 
 impl<N: NodeType, K: Key + ?Sized, V> From<OwnedNode<N>> for BoxedNode<K, V> {
     fn from(value: OwnedNode<N>) -> Self {
@@ -217,47 +224,12 @@ impl<K: Key + ?Sized, V> BoxedNode<K, V> {
     pub fn insert(&mut self, key: u8, value: BoxedNode<K, V>) -> Option<BoxedNode<K, V>> {
         unsafe { self.0.insert(key, value) }
     }
+}
 
-    /*
-    pub fn display(&self, depth: usize) {
-        match self.header().data().kind {
-            NodeKind::Leaf => print!("leaf"),
-            NodeKind::Node4 => print!("node4"),
-            NodeKind::Node16 => print!("node16"),
-            NodeKind::Node48 => print!("node48"),
-            NodeKind::Node256 => print!("node256"),
-        }
-        println!(" {:?}", self.header().storage().prefix());
-        match self.header().data().kind {
-            NodeKind::Leaf => {}
-            NodeKind::Node4 => unsafe {
-                let node = self.0.cast::<Node4<K, V>>();
-                for i in 0..node.as_ref().header.data().len {
-                    for _ in 0..(depth * 4) {
-                        print!(" ");
-                    }
-                    print!("{}:", node.as_ref().keys[i as usize]);
-                    node.as_ref().ptr[i as usize]
-                        .assume_init_ref()
-                        .display(depth + 1);
-                }
-            },
-            NodeKind::Node16 => unsafe {
-                let node = self.0.cast::<Node16<K, V>>();
-                for i in 0..node.as_ref().header.data().len {
-                    for _ in 0..(depth * 4) {
-                        print!(" ");
-                    }
-                    print!("{}:", node.as_ref().keys[i as usize]);
-                    node.as_ref().ptr[i as usize]
-                        .assume_init_ref()
-                        .display(depth + 1);
-                }
-            },
-            _ => todo!(),
-        }
+impl<K: Key + ?Sized, V: fmt::Display> BoxedNode<K, V> {
+    pub fn display(&self, fmt: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+        unsafe { self.0.display(fmt, depth) }
     }
-    */
 }
 
 impl<K: Key + ?Sized, V> Drop for BoxedNode<K, V> {

@@ -3,7 +3,8 @@ use super::{
     owned_node::RawOwnedNode,
     BoxedNode, Node4, NodeHeader, NodeKind, NodeType, OwnedNode, RawBoxedNode,
 };
-use crate::key::Key;
+use crate::key::{Key, KeyStorage};
+use core::fmt;
 use std::{mem::MaybeUninit, ops::Range, ptr::addr_of_mut};
 
 #[repr(C)]
@@ -156,6 +157,29 @@ impl<K: Key + ?Sized, V> Node16<K, V> {
 
         new_ptr.as_mut().header.data_mut().free = 16;
         new_ptr
+    }
+}
+
+impl<K: Key + ?Sized, V: fmt::Display> Node16<K, V> {
+    pub fn display(&self, fmt: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+        writeln!(
+            fmt,
+            "NODE16: len={},prefix={:?}",
+            self.header.storage().data().len,
+            self.header.storage().prefix()
+        )?;
+        for i in 0..self.header.storage().data().len {
+            for _ in 0..depth {
+                fmt.write_str("  ")?;
+            }
+            write!(fmt, "[{}] = ", self.keys[i as usize])?;
+            unsafe {
+                self.ptr[i as usize]
+                    .assume_init_ref()
+                    .display(fmt, depth + 1)?;
+            }
+        }
+        Ok(())
     }
 }
 

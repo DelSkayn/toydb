@@ -1,7 +1,11 @@
 use super::{
     owned_node::RawOwnedNode, BoxedNode, Node48, NodeHeader, NodeKind, NodeType, OwnedNode,
 };
-use crate::{key::Key, nodes::node48::PtrUnion};
+use crate::{
+    key::{Key, KeyStorage},
+    nodes::node48::PtrUnion,
+};
+use core::fmt;
 use std::{mem::MaybeUninit, ops::Range, ptr::addr_of_mut};
 
 #[repr(C)]
@@ -80,5 +84,25 @@ impl<K: Key + ?Sized, V> Node256<K, V> {
         RawOwnedNode::dealloc(this);
 
         new_node
+    }
+}
+
+impl<K: Key + ?Sized, V: fmt::Display> Node256<K, V> {
+    pub fn display(&self, fmt: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+        writeln!(
+            fmt,
+            "NODE16: len={},prefix={:?}",
+            self.header.storage().data().len,
+            self.header.storage().prefix()
+        )?;
+        for (idx, p) in self.ptr.iter().enumerate() {
+            let Some(p) = p else { break };
+            write!(fmt, "[{}] = ", idx)?;
+            for _ in 0..depth {
+                fmt.write_str("  ")?;
+            }
+            p.display(fmt, depth + 1)?;
+        }
+        Ok(())
     }
 }

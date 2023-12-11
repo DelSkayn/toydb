@@ -2,8 +2,11 @@ use super::{
     node256::Node256, owned_node::RawOwnedNode, BoxedNode, NodeHeader, NodeKind, NodeType,
     OwnedNode, RawBoxedNode,
 };
-use crate::{key::Key, nodes::Node16};
-use std::{mem::MaybeUninit, ops::Range, ptr::addr_of_mut};
+use crate::{
+    key::{Key, KeyStorage},
+    nodes::Node16,
+};
+use std::{fmt, mem::MaybeUninit, ops::Range, ptr::addr_of_mut};
 
 pub union PtrUnion<K: Key + ?Sized, V> {
     pub free: u8,
@@ -175,6 +178,30 @@ impl<K: Key + ?Sized, V> Node48<K, V> {
         new_ptr.as_mut().header.data_mut().len = 47;
         new_ptr.as_mut().header.data_mut().kind = NodeKind::Node256;
         new_ptr
+    }
+}
+
+impl<K: Key + ?Sized, V: fmt::Display> Node48<K, V> {
+    pub fn display(&self, fmt: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+        writeln!(
+            fmt,
+            "NODE16: len={},prefix={:?}",
+            self.header.storage().data().len,
+            self.header.storage().prefix()
+        )?;
+        for i in 0..255 {
+            if self.idx[i] == u8::MAX {
+                continue;
+            }
+            for _ in 0..depth {
+                fmt.write_str("  ")?;
+            }
+            write!(fmt, "[{}] = ", i)?;
+            unsafe {
+                self.ptr[self.idx[i] as usize].ptr.display(fmt, depth + 1)?;
+            }
+        }
+        Ok(())
     }
 }
 

@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::key::{Key, KeyStorage};
 use crate::nodes::{BoxedNode, LeafNode, Node4, OwnedNode, RawBoxedNode};
 
@@ -248,4 +250,16 @@ impl<K: Key + ?Sized, V> RawArt<K, V> {
         }
     }
     */
+}
+
+impl<K: Key + ?Sized, V: fmt::Display> RawArt<K, V> {
+    pub fn display(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(x) = self.root.as_ref() {
+            write!(f, "TREE = ")?;
+            x.display(f, 1)?;
+        } else {
+            writeln!(f, "TREE = EMPTY")?;
+        }
+        Ok(())
+    }
 }

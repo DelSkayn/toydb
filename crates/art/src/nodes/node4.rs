@@ -3,7 +3,7 @@ use crate::{
     key::{Key, KeyStorage},
     nodes::owned_node::RawOwnedNode,
 };
-use std::{mem::MaybeUninit, ops::Range, ptr::addr_of_mut};
+use std::{fmt, mem::MaybeUninit, ops::Range, ptr::addr_of_mut};
 
 #[repr(C)]
 pub struct Node4<K: Key + ?Sized, V> {
@@ -145,6 +145,29 @@ impl<K: Key + ?Sized, V> Node4<K, V> {
             4,
         );
         new_ptr
+    }
+}
+
+impl<K: Key + ?Sized, V: fmt::Display> Node4<K, V> {
+    pub fn display(&self, fmt: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+        writeln!(
+            fmt,
+            "NODE16: len={},prefix={:?}",
+            self.header.storage().data().len,
+            self.header.storage().prefix()
+        )?;
+        for i in 0..self.header.storage().data().len {
+            for _ in 0..depth {
+                fmt.write_str("  ")?;
+            }
+            write!(fmt, "[{}] = ", self.keys[i as usize])?;
+            unsafe {
+                self.ptr[i as usize]
+                    .assume_init_ref()
+                    .display(fmt, depth + 1)?;
+            }
+        }
+        Ok(())
     }
 }
 
