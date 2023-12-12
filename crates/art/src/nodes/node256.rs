@@ -29,15 +29,15 @@ impl<K: Key + ?Sized, V> Node256<K, V> {
     }
 
     pub fn is_full(&self) -> bool {
-        // slight quirk with len being only u8
+        // HACK: slight quirk with len being only u8
         // Can't fit full length so actuall length is self.header.data().len + 1
         self.header.data().len == 255
     }
 
     pub fn should_shrink(&self) -> bool {
-        // slight quirk with len being only u8
+        // HACK: slight quirk with len being only u8
         // Can't fit full length so actuall length is self.header.data().len + 1
-        self.header.data().len < 47
+        self.header.data().len < 48
     }
 
     pub fn get(&self, key: u8) -> Option<&BoxedNode<K, V>> {
@@ -60,13 +60,15 @@ impl<K: Key + ?Sized, V> Node256<K, V> {
         res
     }
 
-    unsafe fn shrink(mut this: RawOwnedNode<Self>) -> RawOwnedNode<Node48<K, V>> {
+    pub unsafe fn shrink(mut this: RawOwnedNode<Self>) -> RawOwnedNode<Node48<K, V>> {
         assert!(this.as_ref().should_shrink());
         let mut new_node = RawOwnedNode::<Node48<K, V>>::alloc();
 
         let key_ptr = addr_of_mut!((*new_node.as_ptr()).idx[0]);
         let ptr_ptr = addr_of_mut!((*new_node.as_ptr()).ptr[0]);
         let mut written = 0;
+
+        std::ptr::write_bytes(key_ptr, u8::MAX, 256);
 
         for (idx, p) in this.as_mut().ptr.iter_mut().enumerate() {
             if let Some(x) = p.take() {
@@ -78,7 +80,8 @@ impl<K: Key + ?Sized, V> Node256<K, V> {
         debug_assert_eq!(written, 48);
 
         new_node.copy_header_from(this);
-        new_node.header_mut().data_mut().len = 48;
+        // HACK: undo storage quirk.
+        new_node.header_mut().data_mut().len += 1;
         new_node.header_mut().data_mut().free = u8::MAX;
 
         RawOwnedNode::dealloc(this);
@@ -87,20 +90,20 @@ impl<K: Key + ?Sized, V> Node256<K, V> {
     }
 }
 
-impl<K: Key + ?Sized, V: fmt::Display> Node256<K, V> {
+impl<K: Key + ?Sized, V: fmt::Debug> Node256<K, V> {
     pub fn display(&self, fmt: &mut fmt::Formatter, depth: usize) -> fmt::Result {
         writeln!(
             fmt,
-            "NODE16: len={},prefix={:?}",
+            "NODE256: len={},prefix={:?}",
             self.header.storage().data().len,
             self.header.storage().prefix()
         )?;
         for (idx, p) in self.ptr.iter().enumerate() {
             let Some(p) = p else { break };
-            write!(fmt, "[{}] = ", idx)?;
             for _ in 0..depth {
                 fmt.write_str("  ")?;
             }
+            write!(fmt, "[{}] = ", idx)?;
             p.display(fmt, depth + 1)?;
         }
         Ok(())

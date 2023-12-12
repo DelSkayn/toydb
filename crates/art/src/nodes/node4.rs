@@ -118,7 +118,7 @@ impl<K: Key + ?Sized, V> Node4<K, V> {
         None
     }
 
-    unsafe fn fold(mut this: RawOwnedNode<Self>) -> RawBoxedNode<K, V> {
+    pub unsafe fn fold(mut this: RawOwnedNode<Self>) -> RawBoxedNode<K, V> {
         debug_assert_eq!(this.as_ref().header.data().len, 1);
         // move out the child
         let mut child = this.as_mut().ptr[0].assume_init();
@@ -148,11 +148,11 @@ impl<K: Key + ?Sized, V> Node4<K, V> {
     }
 }
 
-impl<K: Key + ?Sized, V: fmt::Display> Node4<K, V> {
+impl<K: Key + ?Sized, V: fmt::Debug> Node4<K, V> {
     pub fn display(&self, fmt: &mut fmt::Formatter, depth: usize) -> fmt::Result {
         writeln!(
             fmt,
-            "NODE16: len={},prefix={:?}",
+            "NODE4: len={},prefix={:?}",
             self.header.storage().data().len,
             self.header.storage().prefix()
         )?;

@@ -56,7 +56,8 @@ unsafe impl<T: Pod + Key> KeyStorage<T> for PodStorageU8<T> {
         let old_slice = unsafe { &bytemuck::bytes_of(old.assume_init_ref()) };
         slice[..prefix.len()].copy_from_slice(prefix);
         slice[prefix.len()] = key;
-        slice[prefix.len() + 1..len].copy_from_slice(old_slice);
+        slice[prefix.len() + 1..len].copy_from_slice(&old_slice[..self.len as usize]);
+        self.len = len as u8
     }
 }
 

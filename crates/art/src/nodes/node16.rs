@@ -114,13 +114,14 @@ impl<K: Key + ?Sized, V> Node16<K, V> {
                 let ptr = unsafe { self.ptr.get_unchecked(i as usize).assume_init() };
                 self.keys.swap(i as usize, (len - 1) as usize);
                 self.ptr.swap(i as usize, (len - 1) as usize);
+                self.header.data_mut().len -= 1;
                 return unsafe { Some(BoxedNode::from_raw(ptr)) };
             }
         }
         None
     }
 
-    unsafe fn shrink(this: RawOwnedNode<Self>) -> RawOwnedNode<Node4<K, V>> {
+    pub unsafe fn shrink(this: RawOwnedNode<Self>) -> RawOwnedNode<Node4<K, V>> {
         // ensure there is enough space for all the nodes.
         assert!(this.as_ref().should_shrink());
         // copy over the keys to be later copied back.
@@ -136,10 +137,10 @@ impl<K: Key + ?Sized, V> Node16<K, V> {
 
         let mut new_ptr = this.realloc::<Node48<K, V>>();
 
-        let src_ptr = new_ptr.into_ptr().cast::<Self>();
+        let src_ptr = new_ptr.as_nonnull().cast::<Self>();
 
         // set all the idx to max
-        let idx_ptr = addr_of_mut!((*new_ptr.as_ptr()).idx).cast::<u8>();
+        let idx_ptr = addr_of_mut!(*((*new_ptr.as_ptr()).idx.as_mut_ptr())).cast::<u8>();
         std::ptr::write_bytes(idx_ptr, u8::MAX, 256);
 
         // write in the proper idx's
@@ -160,7 +161,7 @@ impl<K: Key + ?Sized, V> Node16<K, V> {
     }
 }
 
-impl<K: Key + ?Sized, V: fmt::Display> Node16<K, V> {
+impl<K: Key + ?Sized, V: fmt::Debug> Node16<K, V> {
     pub fn display(&self, fmt: &mut fmt::Formatter, depth: usize) -> fmt::Result {
         writeln!(
             fmt,

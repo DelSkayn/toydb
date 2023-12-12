@@ -34,7 +34,7 @@ impl<K: Key + ?Sized, V> Node48<K, V> {
         OwnedNode::new(Node48 {
             header: NodeHeader::new::<Self>(key, range),
             ptr: unsafe { MaybeUninit::zeroed().assume_init() },
-            idx: [255; 256],
+            idx: [u8::MAX; 256],
         })
     }
 
@@ -126,7 +126,7 @@ impl<K: Key + ?Sized, V> Node48<K, V> {
         unsafe { Some(BoxedNode::from_raw(self.ptr[idx as usize].ptr)) }
     }
 
-    unsafe fn shrink(this: RawOwnedNode<Self>) -> RawOwnedNode<Node16<K, V>> {
+    pub unsafe fn shrink(this: RawOwnedNode<Self>) -> RawOwnedNode<Node16<K, V>> {
         assert!(this.as_ref().should_shrink());
         let mut new_node = RawOwnedNode::<Node16<K, V>>::alloc();
 
@@ -172,20 +172,21 @@ impl<K: Key + ?Sized, V> Node48<K, V> {
         }
 
         new_ptr.copy_header_from(this);
-        // ownership tranfered
+
         RawOwnedNode::dealloc(this);
-        // make the len smaller so it will fit u8
+        // HACK: in order to be able to fit the max size of node256 into a u8 we make the len one
+        // smaller. So node256 will be full when its len is 255.
         new_ptr.as_mut().header.data_mut().len = 47;
         new_ptr.as_mut().header.data_mut().kind = NodeKind::Node256;
         new_ptr
     }
 }
 
-impl<K: Key + ?Sized, V: fmt::Display> Node48<K, V> {
+impl<K: Key + ?Sized, V: fmt::Debug> Node48<K, V> {
     pub fn display(&self, fmt: &mut fmt::Formatter, depth: usize) -> fmt::Result {
         writeln!(
             fmt,
-            "NODE16: len={},prefix={:?}",
+            "NODE48: len={},prefix={:?}",
             self.header.storage().data().len,
             self.header.storage().prefix()
         )?;

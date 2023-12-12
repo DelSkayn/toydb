@@ -50,12 +50,18 @@ impl<K: Key + ?Sized, V> Art<K, V> {
         self.len += res.is_none() as usize;
         res
     }
+
+    pub fn remove(&mut self, key: &K) -> Option<V> {
+        let res = self.tree.remove(key);
+        self.len -= res.is_some() as usize;
+        res
+    }
 }
 
-impl<K: Key + ?Sized, V: std::fmt::Display> Art<K, V> {
+impl<K: Key + ?Sized, V: std::fmt::Debug> Art<K, V> {
     pub fn print(&self) {
-        struct Printer<'a, K: Key + ?Sized, V: std::fmt::Display>(&'a Art<K, V>);
-        impl<K: Key + ?Sized, V: std::fmt::Display> std::fmt::Display for Printer<'_, K, V> {
+        struct Printer<'a, K: Key + ?Sized, V: std::fmt::Debug>(&'a Art<K, V>);
+        impl<K: Key + ?Sized, V: std::fmt::Debug> std::fmt::Display for Printer<'_, K, V> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 self.0.tree.display(f)
             }

@@ -1,29 +1,29 @@
 use core::fmt;
 
 use crate::key::{Key, KeyStorage};
-use crate::nodes::{BoxedNode, LeafNode, Node4, OwnedNode, RawBoxedNode};
+use crate::nodes::{BoxedNode, LeafNode, Node4, NodeKind, OwnedNode, RawBoxedNode, RawOwnedNode};
 
 pub struct RawArt<K: Key + ?Sized, V> {
     root: Option<BoxedNode<K, V>>,
 }
 
 impl<K: Key + ?Sized, V> RawArt<K, V> {
+    const PREFIX_PANIC: &'static str = "the key was a prefix of an existing key";
+
     pub fn new() -> Self {
         Self { root: None }
     }
 
     pub fn get(&self, key: &K) -> Option<&V> {
-        if let Some(root) = self.root.as_ref() {
-            return unsafe { Self::find_value(root.as_raw(), key) };
-        }
-        None
+        let root = self.root.as_ref()?;
+        let ptr = unsafe { Self::find_value(root.as_raw(), key)? };
+        Some(unsafe { &(*ptr.as_ptr()).value })
     }
 
-    pub fn get_mut(&self, key: &K) -> Option<&mut V> {
-        if let Some(root) = self.root.as_ref() {
-            return unsafe { Self::find_value_mut(root.as_raw(), key) };
-        }
-        None
+    pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
+        let root = self.root.as_mut()?;
+        let ptr = unsafe { Self::find_value(root.as_raw(), key)? };
+        Some(unsafe { &mut (*ptr.as_ptr()).value })
     }
 
     pub fn insert(&mut self, key: &K, value: V) -> Option<V> {
@@ -37,10 +37,10 @@ impl<K: Key + ?Sized, V> RawArt<K, V> {
         }
     }
 
-    unsafe fn find_value<'a>(mut node: RawBoxedNode<K, V>, key: &K) -> Option<&'a V>
-    where
-        K: 'a,
-    {
+    unsafe fn find_value(
+        mut node: RawBoxedNode<K, V>,
+        key: &K,
+    ) -> Option<RawOwnedNode<LeafNode<K, V>>> {
         let mut matched: usize = 0;
 
         loop {
@@ -51,48 +51,11 @@ impl<K: Key + ?Sized, V> RawArt<K, V> {
             matched += prefix.len();
 
             if matched == key.len() {
-                if let Some(x) = node
-                    .is::<LeafNode<K, V>>()
-                    .then(|| node.as_ref::<LeafNode<K, V>>())
-                {
-                    return Some(&x.value);
+                if node.is::<LeafNode<K, V>>() {
+                    return Some(node.into_owned::<LeafNode<K, V>>());
                 }
                 // we matched all but have no key left, so it is a prefix.
-                panic!("key was a prefix of an existing key");
-            }
-            let decision = key.at(matched);
-
-            if let Some(x) = node.get(decision) {
-                matched += 1;
-                node = x.as_raw();
-            } else {
-                return None;
-            }
-        }
-    }
-
-    unsafe fn find_value_mut<'a>(mut node: RawBoxedNode<K, V>, key: &K) -> Option<&'a mut V>
-    where
-        K: 'a,
-    {
-        let mut matched: usize = 0;
-
-        loop {
-            let prefix = node.prefix();
-            if Self::match_prefix(key, matched, prefix).is_some() {
-                return None;
-            }
-            matched += prefix.len();
-
-            if matched == key.len() {
-                if let Some(x) = node
-                    .is::<LeafNode<K, V>>()
-                    .then(|| node.as_mut::<LeafNode<K, V>>())
-                {
-                    return Some(&mut x.value);
-                }
-                // we matched all but have no key left, so it is a prefix.
-                panic!("key was a prefix of an existing key");
+                panic!("{}", Self::PREFIX_PANIC);
             }
             let decision = key.at(matched);
 
@@ -173,8 +136,6 @@ impl<K: Key + ?Sized, V> RawArt<K, V> {
             .storage_mut()
             .drop_prefix(prefix_mismatch_offset + 1);
 
-        dbg!(node.header().storage().prefix());
-
         let mut split_raw = split_node.into_raw();
         let old_node = std::mem::replace(node, split_raw.into_boxed());
 
@@ -185,9 +146,7 @@ impl<K: Key + ?Sized, V> RawArt<K, V> {
     }
 
     pub fn remove(&mut self, key: &K) -> Option<V> {
-        let Some(root) = self.root.as_mut() else {
-            return None;
-        };
+        let root = self.root.as_mut()?;
 
         if Self::match_prefix(key, 0, root.header().storage().prefix()).is_some() {
             return None;
@@ -203,44 +162,41 @@ impl<K: Key + ?Sized, V> RawArt<K, V> {
             }
         }
 
-        Self::remove_node(root, key, root.header().storage().prefix().len())
+        let len = root.header().storage().prefix().len();
+        unsafe { Self::remove_node(root.as_raw_mut(), key, len) }
     }
 
-    fn remove_node(node: &mut BoxedNode<K, V>, key: &K, mut matched: usize) -> Option<V> {
-        let select = key.at(matched);
-        matched += 1;
+    /// remove the node from a given node. assume the node prefix is already metched.
+    unsafe fn remove_node(
+        mut node: &mut RawBoxedNode<K, V>,
+        key: &K,
+        mut matched: usize,
+    ) -> Option<V> {
+        loop {
+            let decision = key.at(matched);
+            matched += 1;
+            let Some(new_node) = node.get_mut(decision) else {
+                return None;
+            };
 
-        let _next_node = node.get_mut(select);
-
-        let prefix = node.header().storage().prefix();
-        if Self::match_prefix(key, matched, prefix).is_some() {
-            // prefix diverged, split node in prefix.
-            return None;
-        }
-        /*
-        // matched the entire prefix.
-        matched += prefix.len();
-        if matched >= key.len() {
-            if let Some(x) = node.as_leaf_mut() {
-                let res = std::mem::replace(&mut x.value, value);
-                return Some(res);
+            let prefix = new_node.header().storage().prefix();
+            if Self::match_prefix(key, matched, prefix).is_some() {
+                return None;
             }
-            // we matched all but have no key left, so it is a prefix.
-            panic!("key was a prefix of an existing key");
+            matched += prefix.len();
+            if matched == key.len() {
+                if !new_node.is::<LeafNode<K, V>>() {
+                    panic!("{}", Self::PREFIX_PANIC);
+                };
+
+                let leaf_node = node.remove(decision).unwrap();
+                let Ok(node) = leaf_node.into_owned::<LeafNode<K, V>>() else {
+                    unreachable!()
+                };
+                return Some(LeafNode::into_value(node));
+            }
+            node = new_node.as_raw_mut();
         }
-
-        let decision = key.at(matched);
-        matched += 1;
-
-        if let Some(x) = node.get_mut(decision) {
-            return Self::insert_node(x, matched, key, value);
-        }
-
-        let new_node = BoxedNode::new(LeafNode::new(key, matched..key.len(), value));
-        node.insert(decision, new_node.into());
-        None
-        */
-        todo!()
     }
 
     /*
@@ -252,7 +208,7 @@ impl<K: Key + ?Sized, V> RawArt<K, V> {
     */
 }
 
-impl<K: Key + ?Sized, V: fmt::Display> RawArt<K, V> {
+impl<K: Key + ?Sized, V: fmt::Debug> RawArt<K, V> {
     pub fn display(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if let Some(x) = self.root.as_ref() {
             write!(f, "TREE = ")?;

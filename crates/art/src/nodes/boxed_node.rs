@@ -105,6 +105,44 @@ impl<K: Key + ?Sized, V> RawBoxedNode<K, V> {
         }
     }
 
+    pub unsafe fn remove(&mut self, key: u8) -> Option<BoxedNode<K, V>> {
+        match self.header().data().kind {
+            NodeKind::Leaf => panic!(),
+            NodeKind::Node4 => {
+                let node = self.as_mut::<Node4<K, V>>();
+                let res = node.remove(key);
+                if node.should_shrink() {
+                    *self = Node4::<K, V>::fold(self.into_owned::<Node4<K, V>>());
+                }
+                res
+            }
+            NodeKind::Node16 => {
+                let node = self.as_mut::<Node16<K, V>>();
+                let res = node.remove(key);
+                if node.should_shrink() {
+                    *self = Node16::shrink(self.into_owned::<Node16<K, V>>()).into_boxed();
+                }
+                res
+            }
+            NodeKind::Node48 => {
+                let node = self.as_mut::<Node48<K, V>>();
+                let res = node.remove(key);
+                if node.should_shrink() {
+                    *self = Node48::shrink(self.into_owned::<Node48<K, V>>()).into_boxed();
+                }
+                res
+            }
+            NodeKind::Node256 => {
+                let node = self.as_mut::<Node256<K, V>>();
+                let res = node.remove(key);
+                if node.should_shrink() {
+                    *self = Node256::shrink(self.into_owned::<Node256<K, V>>()).into_boxed();
+                }
+                res
+            }
+        }
+    }
+
     pub unsafe fn drop_in_place(self) {
         match self.header().data().kind {
             NodeKind::Leaf => {
@@ -131,7 +169,7 @@ impl<K: Key + ?Sized, V> RawBoxedNode<K, V> {
     }
 }
 
-impl<K: Key + ?Sized, V: fmt::Display> RawBoxedNode<K, V> {
+impl<K: Key + ?Sized, V: fmt::Debug> RawBoxedNode<K, V> {
     pub unsafe fn display(self, fmt: &mut fmt::Formatter, depth: usize) -> fmt::Result {
         match self.header().data().kind {
             NodeKind::Leaf => self.as_ref::<LeafNode<K, V>>().display(fmt, depth),
@@ -226,7 +264,7 @@ impl<K: Key + ?Sized, V> BoxedNode<K, V> {
     }
 }
 
-impl<K: Key + ?Sized, V: fmt::Display> BoxedNode<K, V> {
+impl<K: Key + ?Sized, V: fmt::Debug> BoxedNode<K, V> {
     pub fn display(&self, fmt: &mut fmt::Formatter, depth: usize) -> fmt::Result {
         unsafe { self.0.display(fmt, depth) }
     }

@@ -40,6 +40,10 @@ impl<N: NodeType> RawOwnedNode<N> {
         self.0.as_ptr()
     }
 
+    pub fn as_nonnull(self) -> NonNull<N> {
+        self.0
+    }
+
     pub unsafe fn from_raw_node_ptr(ptr: RawBoxedNode<N::Key, N::Value>) -> Self {
         debug_assert!(ptr.is::<N>());
         Self(ptr.into_nonnull().cast())
@@ -52,10 +56,6 @@ impl<N: NodeType> RawOwnedNode<N> {
 
     pub fn from_ptr(ptr: NonNull<N>) -> Self {
         RawOwnedNode(ptr)
-    }
-
-    pub fn into_ptr(self) -> NonNull<N> {
-        self.0
     }
 
     pub unsafe fn as_mut(&mut self) -> &mut N {
@@ -78,6 +78,14 @@ impl<N: NodeType> RawOwnedNode<N> {
         self.0.cast().as_mut()
     }
 
+    /// Copy the header from the give raw not to self.
+    ///
+    /// This transfers ownership of the header from one node to the next.
+    ///
+    /// # Safety.
+    /// The current node must have an uninitialized header and the other node must have a valid
+    /// header. After the function call succeeds the destructor for the header in the other node
+    /// should not be ran.
     pub unsafe fn copy_header_from<O>(&mut self, other: RawOwnedNode<O>)
     where
         O: NodeType<Key = N::Key, Value = N::Value>,

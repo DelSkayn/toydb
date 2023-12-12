@@ -1,3 +1,5 @@
+use crate::Art;
+
 #[test]
 fn test_string() {
     let mut tree = crate::Art::<str, usize>::new();
@@ -84,6 +86,13 @@ fn test_string() {
         Some(8)
     );
     assert_eq!(tree.get("hello world\0 null byte").copied(), Some(9));
+
+    assert_eq!(tree.get("hellowword"), None);
+
+    assert_eq!(tree.remove("hellowword"), None);
+    assert_eq!(tree.remove("hello voa"), Some(7));
+    assert_eq!(tree.remove("hello voa"), None);
+    assert_eq!(tree.get("hello voa"), None);
 }
 
 const XOR_SHIFT_INIT: u64 = 384931938475643;
@@ -136,19 +145,24 @@ fn test_u64() {
 
 #[test]
 fn random_test_u64() {
-    let mut tree = crate::Art::<u64, u64>::new();
+    let mut tree = crate::Art::<u64, [u8; 8]>::new();
     let mut state = XorState::new();
     let mut pairs = Vec::new();
 
-    for _ in 0..100_000 {
+    for _ in 0..1_000_000 {
         let k = xorshift(&mut state);
-        let v = xorshift(&mut state);
-        tree.insert(&k, v);
-        pairs.push((k, v))
+        tree.insert(&k, k.to_le_bytes());
+        pairs.push(k)
     }
 
-    for (k, v) in pairs.iter().copied() {
-        assert_eq!(tree.get(&k).copied(), Some(v))
+    tree.print();
+
+    for k in pairs.iter().copied() {
+        assert_eq!(tree.get(&k).copied(), Some(k.to_le_bytes()))
+    }
+
+    for k in pairs.iter().copied() {
+        assert_eq!(tree.remove(&k), Some(k.to_le_bytes()))
     }
 }
 
@@ -248,4 +262,41 @@ fn detailed_use() {
             .copied(),
         Some(10)
     );
+}
+
+#[test]
+fn test_grow_shrink() {
+    let mut tree = Art::<u64, u64>::new();
+
+    for i in 0..255 {
+        let k = u64::from_le_bytes([0, 0, 0, i, 0, 0, 0, 0]);
+        tree.insert(&k, k);
+    }
+
+    for i in 0..255 {
+        let k = u64::from_le_bytes([0, 0, 0, 0, 0, i, 0, 0]);
+        tree.insert(&k, k);
+    }
+
+    for i in 0..255 {
+        let k = u64::from_le_bytes([0, 0, 0, 0, 1, i, 0, 0]);
+        tree.insert(&k, k);
+    }
+
+    for i in 0..255 {
+        let k = u64::from_le_bytes([0, 0, 0, i, 0, 0, 0, 0]);
+        assert_eq!(tree.remove(&k), Some(k));
+    }
+
+    let k = u64::from_le_bytes([0, 0, 0, 0, 0, 0, 0, 0]);
+    tree.insert(&k, k);
+
+    for i in (0..255).rev() {
+        tree.print();
+        let k = u64::from_le_bytes([0, 0, 0, 0, 1, i, 0, 0]);
+        assert_eq!(tree.remove(&k), Some(k));
+        tree.print();
+        let k = u64::from_le_bytes([0, 0, 0, 0, 0, i, 0, 0]);
+        assert_eq!(tree.remove(&k), Some(k));
+    }
 }

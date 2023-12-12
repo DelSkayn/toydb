@@ -14,7 +14,7 @@ pub use node16::Node16;
 pub use node256::Node256;
 pub use node4::Node4;
 pub use node48::Node48;
-pub use owned_node::OwnedNode;
+pub use owned_node::{OwnedNode, RawOwnedNode};
 
 use crate::key::Key;
 
