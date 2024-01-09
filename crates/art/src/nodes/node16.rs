@@ -9,7 +9,7 @@ use std::{mem::MaybeUninit, ops::Range, ptr::addr_of_mut};
 
 #[repr(C)]
 pub struct Node16<K: Key + ?Sized, V> {
-    pub header: NodeHeader<K>,
+    pub header: NodeHeader<K, V>,
     pub ptr: [MaybeUninit<RawBoxedNode<K, V>>; 16],
     pub keys: [u8; 16],
 }
@@ -51,6 +51,17 @@ impl<K: Key + ?Sized, V> Node16<K, V> {
             .copied()
             .position(|x| x == key)?;
         unsafe { Some(BoxedNode::from_raw_mut(self.ptr[idx].assume_init_mut())) }
+    }
+
+    pub fn next_node(&self, from: u8) -> Option<(u8, RawBoxedNode<K, V>)> {
+        let (ptr_idx, next_key) = self
+            .keys
+            .iter()
+            .copied()
+            .enumerate()
+            .filter(|(_, x)| *x >= from)
+            .min_by_key(|(_, x)| *x)?;
+        Some((next_key, unsafe { self.ptr[ptr_idx].assume_init() }))
     }
 
     pub fn insert(&mut self, key: u8, ptr: BoxedNode<K, V>) -> Option<BoxedNode<K, V>> {
@@ -166,10 +177,10 @@ impl<K: Key + ?Sized, V: fmt::Debug> Node16<K, V> {
         writeln!(
             fmt,
             "NODE16: len={},prefix={:?}",
-            self.header.storage().data().len,
-            self.header.storage().prefix()
+            self.header.storage.data().len,
+            self.header.storage.prefix()
         )?;
-        for i in 0..self.header.storage().data().len {
+        for i in 0..self.header.storage.data().len {
             for _ in 0..depth {
                 fmt.write_str("  ")?;
             }

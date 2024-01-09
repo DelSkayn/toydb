@@ -1,12 +1,13 @@
 #![allow(dead_code)]
 
-use key::Key;
-use raw::RawArt;
+use key::{BorrowedKey, Key};
+use raw::{BorrowIter, RawArt};
 
 mod key;
 mod nodes;
 mod raw;
 
+mod iter;
 #[cfg(test)]
 mod test;
 
@@ -55,6 +56,12 @@ impl<K: Key + ?Sized, V> Art<K, V> {
         let res = self.tree.remove(key);
         self.len -= res.is_some() as usize;
         res
+    }
+}
+
+impl<K: Key + ?Sized + BorrowedKey, V> Art<K, V> {
+    pub fn iter(&self) -> BorrowIter<K, V> {
+        self.tree.iter()
     }
 }
 

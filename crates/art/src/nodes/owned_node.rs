@@ -49,7 +49,7 @@ impl<N: NodeType> RawOwnedNode<N> {
         Self(ptr.into_nonnull().cast())
     }
 
-    pub unsafe fn from_header_ptr(ptr: NonNull<NodeHeader<N::Key>>) -> Self {
+    pub unsafe fn from_header_ptr(ptr: NonNull<NodeHeader<N::Key, N::Value>>) -> Self {
         debug_assert!(ptr.as_ref().is::<N>());
         Self(ptr.cast())
     }
@@ -74,8 +74,12 @@ impl<N: NodeType> RawOwnedNode<N> {
         std::ptr::drop_in_place(self.0.as_ptr());
     }
 
-    pub unsafe fn header_mut(&mut self) -> &mut NodeHeader<N::Key> {
+    pub unsafe fn header_mut(&mut self) -> &mut NodeHeader<N::Key, N::Value> {
         self.0.cast().as_mut()
+    }
+
+    pub unsafe fn header(&self) -> &NodeHeader<N::Key, N::Value> {
+        self.0.cast().as_ref()
     }
 
     /// Copy the header from the give raw not to self.
@@ -91,9 +95,15 @@ impl<N: NodeType> RawOwnedNode<N> {
         O: NodeType<Key = N::Key, Value = N::Value>,
     {
         self.0
-            .cast::<NodeHeader<N::Key>>()
+            .cast::<NodeHeader<N::Key, N::Value>>()
             .as_ptr()
-            .write(other.0.cast::<NodeHeader<N::Key>>().as_ptr().read());
+            .write(
+                other
+                    .0
+                    .cast::<NodeHeader<N::Key, N::Value>>()
+                    .as_ptr()
+                    .read(),
+            );
         self.header_mut().data_mut().kind = N::KIND;
     }
 }
@@ -138,6 +148,10 @@ impl<N: NodeType> OwnedNode<N> {
         let res = self.0;
         std::mem::forget(self);
         res
+    }
+
+    pub fn as_raw(&self) -> RawOwnedNode<N> {
+        self.0
     }
 
     //// Returns the underlying pointer.

@@ -1,5 +1,6 @@
 use super::{
     owned_node::RawOwnedNode, BoxedNode, Node48, NodeHeader, NodeKind, NodeType, OwnedNode,
+    RawBoxedNode,
 };
 use crate::{
     key::{Key, KeyStorage},
@@ -10,7 +11,7 @@ use std::{mem::MaybeUninit, ops::Range, ptr::addr_of_mut};
 
 #[repr(C)]
 pub struct Node256<K: Key + ?Sized, V> {
-    pub header: NodeHeader<K>,
+    pub header: NodeHeader<K, V>,
     pub ptr: [Option<BoxedNode<K, V>>; 256],
 }
 
@@ -46,6 +47,13 @@ impl<K: Key + ?Sized, V> Node256<K, V> {
 
     pub fn get_mut(&mut self, key: u8) -> Option<&mut BoxedNode<K, V>> {
         self.ptr[key as usize].as_mut()
+    }
+
+    pub fn next_node(&mut self, from: u8) -> Option<(u8, RawBoxedNode<K, V>)> {
+        self.ptr[from as usize..]
+            .iter()
+            .enumerate()
+            .find_map(|(idx, x)| x.as_ref().map(|x| (idx as u8, x.as_raw())))
     }
 
     pub fn insert(&mut self, key: u8, ptr: BoxedNode<K, V>) -> Option<BoxedNode<K, V>> {
@@ -95,8 +103,8 @@ impl<K: Key + ?Sized, V: fmt::Debug> Node256<K, V> {
         writeln!(
             fmt,
             "NODE256: len={},prefix={:?}",
-            self.header.storage().data().len,
-            self.header.storage().prefix()
+            self.header.storage.data().len,
+            self.header.storage.prefix()
         )?;
         for (idx, p) in self.ptr.iter().enumerate() {
             let Some(p) = p else { break };

@@ -7,7 +7,7 @@ use core::fmt;
 use std::{marker::PhantomData, ptr::NonNull};
 
 #[repr(transparent)]
-pub struct RawBoxedNode<K: Key + ?Sized, V>(NonNull<NodeHeader<K>>, PhantomData<V>);
+pub struct RawBoxedNode<K: Key + ?Sized, V>(NonNull<NodeHeader<K, V>>, PhantomData<V>);
 impl<K: Key + ?Sized, V> Copy for RawBoxedNode<K, V> {}
 impl<K: Key + ?Sized, V> Clone for RawBoxedNode<K, V> {
     fn clone(&self) -> Self {
@@ -24,28 +24,28 @@ impl<K: Key + ?Sized, V> RawBoxedNode<K, V> {
         RawBoxedNode(ptr.cast(), PhantomData)
     }
 
-    pub fn from_ptr(ptr: NonNull<NodeHeader<K>>) -> Self {
+    pub fn from_ptr(ptr: NonNull<NodeHeader<K, V>>) -> Self {
         RawBoxedNode(ptr, PhantomData)
     }
 
-    pub fn into_ptr(self) -> *mut NodeHeader<K> {
+    pub fn into_ptr(self) -> *mut NodeHeader<K, V> {
         self.0.as_ptr()
     }
 
-    pub fn into_nonnull(self) -> NonNull<NodeHeader<K>> {
+    pub fn into_nonnull(self) -> NonNull<NodeHeader<K, V>> {
         self.0
     }
 
-    pub unsafe fn header(&self) -> &NodeHeader<K> {
+    pub unsafe fn header(&self) -> &NodeHeader<K, V> {
         self.0.as_ref()
     }
 
-    pub unsafe fn header_mut(&mut self) -> &mut NodeHeader<K> {
+    pub unsafe fn header_mut(&mut self) -> &mut NodeHeader<K, V> {
         self.0.as_mut()
     }
 
     pub unsafe fn prefix(&self) -> &[u8] {
-        self.header().storage().prefix()
+        self.header().storage.prefix()
     }
 
     pub unsafe fn is<N: NodeType>(&self) -> bool {
@@ -92,6 +92,16 @@ impl<K: Key + ?Sized, V> RawBoxedNode<K, V> {
             NodeKind::Node16 => unsafe { self.as_mut::<Node16<K, V>>().get_mut(key) },
             NodeKind::Node48 => unsafe { self.as_mut::<Node48<K, V>>().get_mut(key) },
             NodeKind::Node256 => unsafe { self.as_mut::<Node256<K, V>>().get_mut(key) },
+        }
+    }
+
+    pub unsafe fn next_node(self, from: u8) -> Option<(u8, RawBoxedNode<K, V>)> {
+        match self.header().data().kind {
+            NodeKind::Leaf => panic!(),
+            NodeKind::Node4 => unsafe { self.as_mut::<Node4<K, V>>().next_node(from) },
+            NodeKind::Node16 => unsafe { self.as_mut::<Node16<K, V>>().next_node(from) },
+            NodeKind::Node48 => unsafe { self.as_mut::<Node48<K, V>>().next_node(from) },
+            NodeKind::Node256 => unsafe { self.as_mut::<Node256<K, V>>().next_node(from) },
         }
     }
 
@@ -193,7 +203,7 @@ impl<N: NodeType, K: Key + ?Sized, V> From<OwnedNode<N>> for BoxedNode<K, V> {
 }
 
 impl<K: Key + ?Sized, V> BoxedNode<K, V> {
-    pub unsafe fn from_ptr(ptr: NonNull<NodeHeader<K>>) -> Self {
+    pub unsafe fn from_ptr(ptr: NonNull<NodeHeader<K, V>>) -> Self {
         BoxedNode(RawBoxedNode::from_ptr(ptr))
     }
 
@@ -209,11 +219,11 @@ impl<K: Key + ?Sized, V> BoxedNode<K, V> {
         std::mem::transmute(ptr)
     }
 
-    pub fn header(&self) -> &NodeHeader<K> {
+    pub fn header(&self) -> &NodeHeader<K, V> {
         unsafe { self.0.header() }
     }
 
-    pub fn header_mut(&mut self) -> &mut NodeHeader<K> {
+    pub fn header_mut(&mut self) -> &mut NodeHeader<K, V> {
         unsafe { self.0.header_mut() }
     }
 

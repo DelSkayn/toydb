@@ -91,4 +91,9 @@ fn main() {
         Some(8)
     );
     assert_eq!(tree.get("hello world\0 null byte").copied(), Some(9));
+
+    let mut iter = tree.iter();
+    while let Some((k, v)) = iter.next() {
+        dbg!(k, v);
+    }
 }

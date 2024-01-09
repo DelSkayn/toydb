@@ -1,11 +1,11 @@
-use super::{owned_node::RawOwnedNode, NodeHeader, NodeKind, NodeType, OwnedNode};
+use super::{owned_node::RawOwnedNode, NodeHeader, NodeKind, NodeType, OwnedNode, RawBoxedNode};
 use crate::key::{Key, KeyStorage};
 use core::fmt;
 use std::{ops::Range, ptr::addr_of_mut};
 
 #[repr(C)]
 pub struct LeafNode<K: Key + ?Sized, V> {
-    pub header: NodeHeader<K>,
+    pub header: NodeHeader<K, V>,
     pub value: V,
 }
 
@@ -17,11 +17,10 @@ unsafe impl<K: Key + ?Sized, V> NodeType for LeafNode<K, V> {
 }
 
 impl<K: Key + ?Sized, V> LeafNode<K, V> {
-    pub fn new(key: &K, range: Range<usize>, value: V) -> Self {
-        LeafNode {
-            header: NodeHeader::new::<Self>(key, range),
-            value,
-        }
+    pub fn new(key: &K, range: Range<usize>, value: V, parent: Option<RawBoxedNode<K, V>>) -> Self {
+        let mut header = NodeHeader::new::<Self>(key, range);
+        header.parent = parent;
+        LeafNode { header, value }
     }
 
     pub fn into_value(this: OwnedNode<Self>) -> V {
@@ -41,7 +40,7 @@ impl<K: Key + ?Sized, V: fmt::Debug> LeafNode<K, V> {
             fmt,
             "LEAF: len={:?} prefix={:?} | {:?}",
             self.header.data().len,
-            self.header.storage().prefix(),
+            self.header.storage.prefix(),
             self.value
         )
     }

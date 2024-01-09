@@ -1,7 +1,9 @@
 use core::fmt;
+use std::marker::PhantomData;
 
-use crate::key::{Key, KeyStorage};
-use crate::nodes::{BoxedNode, LeafNode, Node4, NodeKind, OwnedNode, RawBoxedNode, RawOwnedNode};
+use crate::iter::RawIterator;
+use crate::key::{BorrowedKey, Key, KeyStorage};
+use crate::nodes::{BoxedNode, LeafNode, Node4, OwnedNode, RawBoxedNode, RawOwnedNode};
 
 pub struct RawArt<K: Key + ?Sized, V> {
     root: Option<BoxedNode<K, V>>,
@@ -31,7 +33,7 @@ impl<K: Key + ?Sized, V> RawArt<K, V> {
             unsafe { Self::insert_node(x.as_raw_mut(), key, value) }
         } else {
             let range = 0..key.len();
-            let leaf_node = OwnedNode::new(LeafNode::new(key, range, value));
+            let leaf_node = OwnedNode::new(LeafNode::new(key, range, value, None));
             self.root = Some(leaf_node.into());
             None
         }
@@ -71,7 +73,7 @@ impl<K: Key + ?Sized, V> RawArt<K, V> {
     unsafe fn insert_node(mut node: &mut RawBoxedNode<K, V>, key: &K, value: V) -> Option<V> {
         let mut matched = 0;
         loop {
-            let prefix = node.header().storage().prefix();
+            let prefix = node.header().storage.prefix();
             if let Some(x) = Self::match_prefix(key, matched, prefix) {
                 // prefix diverged, split node in prefix.
                 Self::split_at_prefix(node, key, value, matched, matched + x);
@@ -97,7 +99,8 @@ impl<K: Key + ?Sized, V> RawArt<K, V> {
             if let Some(x) = node.get_mut(decision) {
                 node = x.as_raw_mut();
             } else {
-                let new_node = OwnedNode::new(LeafNode::new(key, matched..key.len(), value));
+                let new_node =
+                    OwnedNode::new(LeafNode::new(key, matched..key.len(), value, Some(*node)));
                 node.insert(decision, new_node.into());
                 return None;
             }
@@ -125,15 +128,20 @@ impl<K: Key + ?Sized, V> RawArt<K, V> {
         mismatch_index: usize,
     ) {
         let split_node = OwnedNode::new(Node4::new(key, range_start..mismatch_index));
-        let leaf_node = OwnedNode::new(LeafNode::new(key, (mismatch_index + 1)..key.len(), value));
+        let leaf_node = OwnedNode::new(LeafNode::new(
+            key,
+            (mismatch_index + 1)..key.len(),
+            value,
+            Some(split_node.as_raw().into_boxed()),
+        ));
 
         let value_key = key.at(mismatch_index);
         let prefix_mismatch_offset = mismatch_index - range_start;
-        let old_key = node.header().storage().prefix()[prefix_mismatch_offset];
+        let old_key = node.header().storage.prefix()[prefix_mismatch_offset];
 
         // +1 because also drop the mismatching key.
         node.header_mut()
-            .storage_mut()
+            .storage
             .drop_prefix(prefix_mismatch_offset + 1);
 
         let mut split_raw = split_node.into_raw();
@@ -148,11 +156,11 @@ impl<K: Key + ?Sized, V> RawArt<K, V> {
     pub fn remove(&mut self, key: &K) -> Option<V> {
         let root = self.root.as_mut()?;
 
-        if Self::match_prefix(key, 0, root.header().storage().prefix()).is_some() {
+        if Self::match_prefix(key, 0, root.header().storage.prefix()).is_some() {
             return None;
         }
 
-        if key.len() == root.header().storage().prefix().len() {
+        if key.len() == root.header().storage.prefix().len() {
             match self.root.take().unwrap().into_owned() {
                 Ok(x) => return Some(LeafNode::<K, V>::into_value(x)),
                 Err(this) => {
@@ -162,8 +170,18 @@ impl<K: Key + ?Sized, V> RawArt<K, V> {
             }
         }
 
-        let len = root.header().storage().prefix().len();
+        let len = root.header().storage.prefix().len();
         unsafe { Self::remove_node(root.as_raw_mut(), key, len) }
+    }
+
+    pub fn iter(&self) -> BorrowIter<K, V> {
+        BorrowIter {
+            raw: RawIterator {
+                key: Vec::new(),
+                ptr: self.root.as_ref().map(|x| x.as_raw()),
+                _marker: PhantomData,
+            },
+        }
     }
 
     /// remove the node from a given node. assume the node prefix is already metched.
@@ -179,7 +197,7 @@ impl<K: Key + ?Sized, V> RawArt<K, V> {
                 return None;
             };
 
-            let prefix = new_node.header().storage().prefix();
+            let prefix = new_node.header().storage.prefix();
             if Self::match_prefix(key, matched, prefix).is_some() {
                 return None;
             }
@@ -198,14 +216,21 @@ impl<K: Key + ?Sized, V> RawArt<K, V> {
             node = new_node.as_raw_mut();
         }
     }
+}
 
-    /*
-    pub fn display(&self) {
-        if let Some(x) = self.root.as_ref() {
-            x.display(1)
-        }
+pub struct BorrowIter<'a, K: Key + ?Sized, V> {
+    raw: RawIterator<'a, K, V>,
+}
+
+impl<'a, K: Key + BorrowedKey + ?Sized, V> BorrowIter<'a, K, V> {
+    pub fn next(&mut self) -> Option<(&K, &V)> {
+        self.raw.next().map(|(k, v)| unsafe {
+            (
+                BorrowedKey::from_key_bytes(k),
+                &v.as_nonnull().as_ref().value,
+            )
+        })
     }
-    */
 }
 
 impl<K: Key + ?Sized, V: fmt::Debug> RawArt<K, V> {

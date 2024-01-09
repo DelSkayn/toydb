@@ -6,6 +6,7 @@ mod node256;
 mod node4;
 mod node48;
 mod owned_node;
+mod ptr;
 
 pub use boxed_node::{BoxedNode, RawBoxedNode};
 pub use header::{NodeData, NodeHeader, NodeKind};

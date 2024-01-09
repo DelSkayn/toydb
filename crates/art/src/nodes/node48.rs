@@ -18,7 +18,7 @@ pub union PtrUnion<K: Key + ?Sized, V> {
 /// Lookup is done by looking into the idx array, if the idx array is u8::MAX the node contains no
 #[repr(C)]
 pub struct Node48<K: Key + ?Sized, V> {
-    pub header: NodeHeader<K>,
+    pub header: NodeHeader<K, V>,
     pub ptr: [PtrUnion<K, V>; 48],
     pub idx: [u8; 256],
 }
@@ -62,6 +62,15 @@ impl<K: Key + ?Sized, V> Node48<K, V> {
         } else {
             None
         }
+    }
+
+    pub fn next_node(&mut self, from: u8) -> Option<(u8, RawBoxedNode<K, V>)> {
+        let (key, idx) = self.idx[from as usize..]
+            .iter()
+            .copied()
+            .enumerate()
+            .find(|(_, x)| *x != u8::MAX)?;
+        Some((key as u8, unsafe { self.ptr[idx as usize].ptr }))
     }
 
     pub fn insert(&mut self, key: u8, ptr: BoxedNode<K, V>) -> Option<BoxedNode<K, V>> {
@@ -187,8 +196,8 @@ impl<K: Key + ?Sized, V: fmt::Debug> Node48<K, V> {
         writeln!(
             fmt,
             "NODE48: len={},prefix={:?}",
-            self.header.storage().data().len,
-            self.header.storage().prefix()
+            self.header.storage.data().len,
+            self.header.storage.prefix()
         )?;
         for i in 0..255 {
             if self.idx[i] == u8::MAX {

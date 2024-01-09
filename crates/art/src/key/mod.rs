@@ -57,6 +57,16 @@ pub trait Key {
     fn at(&self, idx: usize) -> u8;
 }
 
+pub trait BorrowedKey {
+    unsafe fn from_key_bytes(bytes: &[u8]) -> &Self;
+}
+
+impl BorrowedKey for str {
+    unsafe fn from_key_bytes(bytes: &[u8]) -> &Self {
+        std::str::from_utf8(&bytes[..bytes.len() - 1]).unwrap()
+    }
+}
+
 // A byte which is not allowed to continue a string in a valid utf-8 string
 // Specifically a byte tagged with a continue bit pattern.
 //

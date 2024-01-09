@@ -7,7 +7,7 @@ use std::{fmt, mem::MaybeUninit, ops::Range, ptr::addr_of_mut};
 
 #[repr(C)]
 pub struct Node4<K: Key + ?Sized, V> {
-    pub header: NodeHeader<K>,
+    pub header: NodeHeader<K, V>,
     pub ptr: [MaybeUninit<RawBoxedNode<K, V>>; 4],
     pub keys: [u8; 4],
 }
@@ -49,6 +49,17 @@ impl<K: Key + ?Sized, V> Node4<K, V> {
             .copied()
             .position(|x| x == key)?;
         unsafe { Some(BoxedNode::from_raw_mut(self.ptr[idx].assume_init_mut())) }
+    }
+
+    pub fn next_node(&self, from: u8) -> Option<(u8, RawBoxedNode<K, V>)> {
+        let (ptr_idx, next_key) = self
+            .keys
+            .iter()
+            .copied()
+            .enumerate()
+            .filter(|(_, x)| *x >= from)
+            .min_by_key(|(_, x)| *x)?;
+        Some((next_key, unsafe { self.ptr[ptr_idx].assume_init() }))
     }
 
     pub fn insert(&mut self, key: u8, ptr: BoxedNode<K, V>) -> Option<BoxedNode<K, V>> {
@@ -124,10 +135,12 @@ impl<K: Key + ?Sized, V> Node4<K, V> {
         let mut child = this.as_mut().ptr[0].assume_init();
 
         // append the current prefix and the key of the child to the prefix of the child.
-        child.header_mut().storage_mut().prepend_prefix(
-            this.as_ref().header.storage().prefix(),
-            this.as_ref().keys[0],
-        );
+        child
+            .header_mut()
+            .storage
+            .prepend_prefix(this.as_ref().header.storage.prefix(), this.as_ref().keys[0]);
+
+        child.header_mut().parent = this.header().parent;
 
         this.drop_in_place();
 
@@ -153,10 +166,10 @@ impl<K: Key + ?Sized, V: fmt::Debug> Node4<K, V> {
         writeln!(
             fmt,
             "NODE4: len={},prefix={:?}",
-            self.header.storage().data().len,
-            self.header.storage().prefix()
+            self.header.storage.data().len,
+            self.header.storage.prefix()
         )?;
-        for i in 0..self.header.storage().data().len {
+        for i in 0..self.header.storage.data().len {
             for _ in 0..depth {
                 fmt.write_str("  ")?;
             }
