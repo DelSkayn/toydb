@@ -1,21 +1,22 @@
-use std::marker::PhantomData;
-
 use crate::{
-    key::{Key, KeyStorage},
-    nodes::{LeafNode, RawBoxedNode, RawOwnedNode},
+    key::Key,
+    raw::{LeafNode, NodePtr, TypedNodePtr},
     Art,
 };
+use std::marker::PhantomData;
 
-pub struct RawIterator<'a, K: Key + ?Sized, V> {
+pub struct RawIterator<'a, O, K: Key + ?Sized, V> {
     pub key: Vec<u8>,
-    pub ptr: Option<RawBoxedNode<K, V>>,
+    pub ptr: Option<NodePtr<O, K, V>>,
     pub _marker: PhantomData<&'a Art<K, V>>,
 }
 
-type Item<'a, K, V> = (&'a [u8], RawOwnedNode<LeafNode<K, V>>);
+type Item<'a, O, K, V> = (&'a [u8], TypedNodePtr<O, LeafNode<K, V>>);
 
-impl<K: Key + ?Sized, V> RawIterator<'_, K, V> {
-    pub fn next(&mut self) -> Option<Item<'_, K, V>> {
+impl<O, K: Key + ?Sized, V> RawIterator<'_, O, K, V> {
+    pub fn next(&mut self) -> Option<Item<'_, O, K, V>> {
+        todo!()
+        /*
         unsafe {
             if self.key.is_empty() {
                 // startup
@@ -86,5 +87,6 @@ impl<K: Key + ?Sized, V> RawIterator<'_, K, V> {
                 ptr = new_ptr;
             }
         }
+        */
     }
 }

@@ -1,13 +1,11 @@
-use std::ops::Range;
-
-use crate::nodes::NodeData;
+use crate::raw::NodeData;
+use std::ops::RangeBounds;
 
 mod inline_buffer;
 mod pod;
 
+use inline_buffer::InlineStorage;
 pub use pod::PodStorageU8;
-
-use self::inline_buffer::InlineStorage;
 
 /// A trait used for the storage of key prefixes.
 ///
@@ -24,7 +22,7 @@ use self::inline_buffer::InlineStorage;
 /// the value of NodeData.
 pub unsafe trait KeyStorage<K: Key + ?Sized>: Sized {
     /// Create the storage for a key.
-    fn store(key: &K, range: Range<usize>, data: NodeData) -> Self;
+    fn store<R: RangeBounds<usize>>(key: &K, range: R, data: NodeData) -> Self;
 
     /// Return a reference to NodeData.
     ///

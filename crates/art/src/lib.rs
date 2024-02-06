@@ -3,11 +3,9 @@
 use key::{BorrowedKey, Key};
 use raw::{BorrowIter, RawArt};
 
-mod key;
-mod nodes;
-mod raw;
-
-mod iter;
+pub mod iter;
+pub mod key;
+pub mod raw;
 #[cfg(test)]
 mod test;
 

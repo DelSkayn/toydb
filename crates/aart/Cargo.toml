@@ -1,0 +1,27 @@
+[package]
+name = "aart"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+loom = ["dep:loom","crossbeam-epoch/loom", "crossbeam-utils/loom"]
+
+[dependencies]
+bytemuck = { version = "1.14.0", features = ["derive"] }
+crossbeam-epoch = "0.9.18"
+crossbeam-utils = "0.8.19"
+
+[target.'cfg(crossbeam_loom)'.dependencies]
+loom = {version = "0.7.1", optional = true}
+
+[dev-dependencies]
+criterion = "0.5.1"
+rand = "0.8.5"
+
+
+[[bench]]
+name = "vart_bench"
+path = "benches/vart_bench.rs"
+harness = false
